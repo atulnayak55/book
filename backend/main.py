@@ -4,7 +4,7 @@ from database.database import engine
 from database import models
 
 # Import both of your routers!
-from routers import users, auth , taxonomy
+from routers import users, auth , taxonomy , listings
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -18,6 +18,7 @@ app = FastAPI(
 app.include_router(auth.router)
 app.include_router(users.router) 
 app.include_router(taxonomy.router)
+app.include_router(listings.router)
 
 @app.get("/")
 def read_root():
