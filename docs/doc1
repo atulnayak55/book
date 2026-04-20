@@ -1,0 +1,108 @@
+Bobooks API
+1. Project Overview
+Bobooks is a hyper-local textbook exchange platform designed specifically for students at the
+University of Padua. It facilitates a trust-based marketplace where students can buy, sell, and
+swap books without payment gateways, leveraging a real-time chat system to arrange physical
+meetups.
+Tech Stack:
+Backend Framework: FastAPI (Python 3.12+)
+Database: PostgreSQL 16 (Containerized via Docker)
+ORM & Migrations: SQLAlchemy (Declarative Base)
+Data Validation: Pydantic v2
+Security: Passlib (bcrypt < 4.0.0), OAuth2 Password Bearer
+Server: Uvicorn (ASGI)
+2. System Architecture & Folder Structure
+The application follows a modular, scalable directory structure to separate concerns between
+routing, database interaction, and data validation.Technical Handoff & Architecture DocumentUniversity of Padua (Unipd) Hyper-Local Marketplace
+•
+•
+•
+•
+•
+•
+backend/
+├── main.py # Application entry point & FastAPI instance
+├── core/
+│ └── security.py # Password hashing (bcrypt) & verification
+├── crud/
+│ ├── crud_user.py # Database operations for Users
+│ └── crud_listing.py # Database operations for Marketplace Listings
+├── database/
+│ ├── database.py # SQLAlchemy Engine & SessionLocal setup
+│ └── models.py # Relational tables (Users, Listings, Chat, Unipd
+hierarchy)
+├── routers/
+│ ├── auth.py # /login endpoint (OAuth2)
+│ └── users.py # /users/ endpoints (Registration & Profile
+retrieval)
+├── schemas/
+│ ├── listing.py # Pydantic validation for marketplace objects
+│ └── user.py # Pydantic validation for student profiles
+├── docker-compose.yml # PostgreSQL container orchestration
+└── requirements.txt # Python dependencies
+3. Database Schema (PostgreSQL)
+The schema perfectly maps the academic hierarchy to user marketplace interactions.
+Category Tables Description & Key Constraints
+Academic
+Hierarchy
+departments , programs ,
+subjects
+Maps Unipd's structure. Joined by a
+Many-to-Many
+program_subjects association
+table.
+Marketplace users , listings ,
+listing_images
+Stores student profiles (with hashed
+passwords) and book details.
+Features cascading deletes on
+listings.
+Communication chat_rooms , messages
+Connects a Buyer, Seller, and
+Listing. messages includes a
+nullable image_url for single-
+image sharing in chat.
+Important Data Persistence Note: The PostgreSQL data is persisted locally in the
+pgdata Docker volume. If you ever need to completely wipe the database to apply schema
+changes, run docker compose down -v .
+4. API Endpoints (Current Implementation)
+The following endpoints are currently live and verified via Swagger UI ( http://
+127.0.0.1:8000/docs ):
+User Management
+POST /users/ : Registers a new student. Accepts name, email, unipd_id, and password.
+Securely hashes the password using bcrypt before persisting. Returns 201 Created .
+GET /users/{user_id} : Fetches a public profile for a student by their ID. Used for viewing
+seller profiles.
+Authentication
+POST /login : Standard OAuth2 login route. Accepts username (email) and password via
+form data. Verifies against the database and currently returns a dummy bearer token.
+5. Known Configurations & Quirks
+Bcrypt Dependency: The application relies on bcrypt < 4.0.0 due to a known bug in
+Passlib's internal sanity checks with newer bcrypt versions.
+Pydantic Emails: The pydantic[email] extra is installed to validate student emails
+seamlessly using the EmailStr type.
+SQLAlchemy Table Creation: Tables are generated automatically on startup via
+models.Base.metadata.create_all(bind=engine) . Future iterations should transition to
+Alembic for migration management.
+6. Development Roadmap & Next Steps
+To take the project from this solid baseline to MVP, proceed with the following phases:
+Phase 1: Real JWT Authentication
+Replace the dummy token in auth.py with a real PyJWT implementation. Create a
+get_current_user dependency so routes can identify who is making the request securely.
+•
+•
+•
+•
+•
+•
+Phase 2: The Marketplace (Listings)
+Build the routers/listings.py file. Implement POST /listings/ (requiring a logged-in
+user) and GET /listings/ (with query parameters to filter by subject_id ).
+Phase 3: The Chat System (WebSockets)
+Create routers/chat.py . Develop the REST endpoints to initialize a chat_room between a
+buyer and seller. Then, implement FastAPI WebSockets to allow real-time message exchange
+and database persistence for chat history.
+Phase 4: Frontend Integration
+Connect a frontend (e.g., React Native / Flutter for mobile, or React/Vue for web) to the live
+Swagger endpoints. The API is entirely structured to feed standard JSON payloads to a modern
+UI component architecture.
