@@ -1,0 +1,208 @@
+import { useEffect, useMemo, useState } from "react";
+import { ListingCard } from "../components/ListingCard";
+import { SearchBar } from "../components/SearchBar";
+import { SelectField } from "../components/SelectField";
+import { StatusMessage } from "../components/StatusMessage";
+import { fetchListings } from "../features/listings/api";
+import { fetchDepartments, fetchPrograms } from "../features/taxonomy/api";
+import type { Course, Department, Listing, Program } from "../types/domain";
+
+function toId(value: string): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+export function ListingsPage() {
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [programs, setPrograms] = useState<Program[]>([]);
+  const [listings, setListings] = useState<Listing[]>([]);
+
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>("");
+  const [selectedProgramId, setSelectedProgramId] = useState<string>("");
+  const [selectedCourseId, setSelectedCourseId] = useState<string>("");
+  const [searchText, setSearchText] = useState("");
+
+  const [loadingFilters, setLoadingFilters] = useState(true);
+  const [loadingListings, setLoadingListings] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadInitialData() {
+      setLoadingFilters(true);
+      setLoadingListings(true);
+      setError(null);
+
+      try {
+        const [departmentData, listingData] = await Promise.all([
+          fetchDepartments(),
+          fetchListings(),
+        ]);
+        setDepartments(departmentData);
+        setListings(listingData);
+      } catch {
+        setError("Could not load listings right now. Please retry.");
+      } finally {
+        setLoadingFilters(false);
+        setLoadingListings(false);
+      }
+    }
+
+    void loadInitialData();
+  }, []);
+
+  useEffect(() => {
+    async function loadPrograms() {
+      const departmentId = toId(selectedDepartmentId);
+
+      if (!departmentId) {
+        setPrograms([]);
+        setSelectedProgramId("");
+        setSelectedCourseId("");
+        return;
+      }
+
+      setLoadingFilters(true);
+      setError(null);
+
+      try {
+        const programData = await fetchPrograms(departmentId);
+        setPrograms(programData);
+      } catch {
+        setError("Could not load programs for this department.");
+      } finally {
+        setLoadingFilters(false);
+      }
+    }
+
+    void loadPrograms();
+  }, [selectedDepartmentId]);
+
+  useEffect(() => {
+    async function loadListingsByCourse() {
+      setLoadingListings(true);
+      setError(null);
+
+      try {
+        const listingData = await fetchListings(toId(selectedCourseId));
+        setListings(listingData);
+      } catch {
+        setError("Could not load listings for the selected course.");
+      } finally {
+        setLoadingListings(false);
+      }
+    }
+
+    void loadListingsByCourse();
+  }, [selectedCourseId]);
+
+  const selectedProgram = useMemo(() => {
+    const programId = toId(selectedProgramId);
+    if (!programId) {
+      return undefined;
+    }
+
+    return programs.find((program) => program.id === programId);
+  }, [programs, selectedProgramId]);
+
+  const courses: Course[] = selectedProgram?.subjects ?? [];
+
+  const visibleListings = useMemo(() => {
+    const query = searchText.trim().toLowerCase();
+    if (!query) {
+      return listings;
+    }
+
+    return listings.filter((listing) => {
+      return (
+        listing.title.toLowerCase().includes(query) ||
+        (listing.description ?? "").toLowerCase().includes(query)
+      );
+    });
+  }, [listings, searchText]);
+
+  return (
+    <section className="listings-page">
+      <SearchBar value={searchText} onChange={setSearchText} />
+
+      <div className="filters-row">
+        <SelectField
+          id="department-filter"
+          label="Department"
+          value={selectedDepartmentId}
+          onChange={(value) => {
+            setSelectedDepartmentId(value);
+            setSelectedProgramId("");
+            setSelectedCourseId("");
+          }}
+          disabled={loadingFilters}
+        >
+          <option value="">All departments</option>
+          {departments.map((department) => (
+            <option key={department.id} value={String(department.id)}>
+              {department.name}
+            </option>
+          ))}
+        </SelectField>
+
+        <SelectField
+          id="program-filter"
+          label="Program"
+          value={selectedProgramId}
+          onChange={(value) => {
+            setSelectedProgramId(value);
+            setSelectedCourseId("");
+          }}
+          disabled={!selectedDepartmentId || loadingFilters}
+        >
+          <option value="">All programs</option>
+          {programs.map((program) => (
+            <option key={program.id} value={String(program.id)}>
+              {program.name}
+            </option>
+          ))}
+        </SelectField>
+
+        <SelectField
+          id="course-filter"
+          label="Course"
+          value={selectedCourseId}
+          onChange={setSelectedCourseId}
+          disabled={!selectedProgramId || loadingFilters}
+        >
+          <option value="">All courses</option>
+          {courses.map((course) => (
+            <option key={course.id} value={String(course.id)}>
+              {course.name}
+            </option>
+          ))}
+        </SelectField>
+      </div>
+
+      {error ? (
+        <StatusMessage
+          title="Request failed"
+          subtitle="Please make sure the backend is running and reachable from this app."
+        />
+      ) : null}
+
+      {loadingListings ? (
+        <StatusMessage title="Loading listings..." />
+      ) : visibleListings.length === 0 ? (
+        <StatusMessage
+          title="No listings found"
+          subtitle="Try a different search term or reset filters."
+        />
+      ) : (
+        <div className="listings-grid">
+          {visibleListings.map((listing) => (
+            <ListingCard key={listing.id} listing={listing} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}

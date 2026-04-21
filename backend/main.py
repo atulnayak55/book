@@ -1,5 +1,6 @@
 # main.py
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from database.database import engine
 from database import models
 
@@ -12,6 +13,17 @@ app = FastAPI(
     title="Bobooks API",
     description="Hyper-local textbook marketplace for Unipd",
     version="0.1.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Connect BOTH routers to the app
