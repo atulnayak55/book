@@ -8,13 +8,10 @@ class UserBase(BaseModel):
     unipd_id: Optional[str] = None
 
 class UserCreate(UserBase):
-    pass # No extra fields needed to create a user right now
+    password: str # The raw password the student types in
 
 class UserResponse(UserBase):
     id: int
     
     # This is the magic bridge! It tells Pydantic to read data directly from SQLAlchemy models
     model_config = ConfigDict(from_attributes=True)
-    
-class UserCreate(UserBase):
-    password: str # The raw password the student types in    

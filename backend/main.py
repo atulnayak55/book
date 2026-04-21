@@ -4,7 +4,7 @@ from database.database import engine
 from database import models
 
 # Import both of your routers!
-from routers import users, auth , taxonomy , listings
+from routers import users, auth, taxonomy, listings, chat
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -19,6 +19,7 @@ app.include_router(auth.router)
 app.include_router(users.router) 
 app.include_router(taxonomy.router)
 app.include_router(listings.router)
+app.include_router(chat.router)
 
 @app.get("/")
 def read_root():
