@@ -44,6 +44,10 @@ export function SellBookDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const sortedDepartments = useMemo(() => {
+    return [...departments].sort((left, right) => left.name.localeCompare(right.name));
+  }, [departments]);
+
   function resetForm() {
     setTitle("");
     setPrice("");
@@ -90,7 +94,14 @@ export function SellBookDialog({
     return programs.find((program) => program.id === id);
   }, [programId, programs]);
 
-  const courses = useMemo(() => selectedProgram?.subjects ?? [], [selectedProgram]);
+  const sortedPrograms = useMemo(() => {
+    return [...programs].sort((left, right) => left.name.localeCompare(right.name));
+  }, [programs]);
+
+  const courses = useMemo(() => {
+    const subjects = selectedProgram?.subjects ?? [];
+    return [...subjects].sort((left, right) => left.name.localeCompare(right.name));
+  }, [selectedProgram]);
 
   if (!open) {
     return null;
@@ -234,7 +245,7 @@ export function SellBookDialog({
                 required
               >
                 <option value="">{t("sell.selectDepartment")}</option>
-                {departments.map((department) => (
+                {sortedDepartments.map((department) => (
                   <option key={department.id} value={String(department.id)}>
                     {department.name}
                   </option>
@@ -254,7 +265,7 @@ export function SellBookDialog({
                 required
               >
                 <option value="">{t("sell.selectProgram")}</option>
-                {programs.map((program) => (
+                {sortedPrograms.map((program) => (
                   <option key={program.id} value={String(program.id)}>
                     {program.name}
                   </option>

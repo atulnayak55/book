@@ -25,8 +25,19 @@ export function useWebSocket(userId: number | undefined, token: string | undefin
   useEffect(() => {
     if (!userId || !token) return;
 
-    const browserHost = typeof window !== "undefined" ? window.location.hostname : "127.0.0.1";
-    const defaultWsBaseUrl = `ws://${browserHost}:8000`;
+    const defaultWsBaseUrl = (() => {
+      if (typeof window === "undefined") {
+        return "ws://127.0.0.1:8000";
+      }
+
+      const { hostname, protocol, port } = window.location;
+      if (port === "5173" || port === "5174") {
+        return `ws://${hostname}:8000`;
+      }
+
+      const wsProtocol = protocol === "https:" ? "wss" : "ws";
+      return `${wsProtocol}://${window.location.host}`;
+    })();
     const baseUrl = import.meta.env.VITE_WS_BASE_URL ?? defaultWsBaseUrl;
     const wsUrl = `${baseUrl}/chat/ws?token=${encodeURIComponent(token)}`;
 

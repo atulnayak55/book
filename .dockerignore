@@ -1,0 +1,11 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+.env
+frontend/node_modules
+frontend/dist
+backend/uploads
+unipd_courses_2025_full.csv
+unipd_courses_2025_merged.csv

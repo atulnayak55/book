@@ -1,19 +1,52 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: bobooks_db
-    restart: always
+    container_name: lebooks_db
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password123
-      POSTGRES_DB: bobooks
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-lebooks}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-lebooks}
     volumes:
-      # This ensures your data persists even if you stop the container
-      - pgdata:/var/lib/postgresql/data
-      # OPTIONAL: Put .sql files in an ./init-db folder to run them on startup
-      # - ./init-db:/docker-entrypoint-initdb.d
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lebooks} -d ${POSTGRES_DB:-lebooks}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: lebooks_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      database_url: postgresql://${POSTGRES_USER:-lebooks}:${POSTGRES_PASSWORD:-change-me}@db:5432/${POSTGRES_DB:-lebooks}
+      jwt_secret_key: ${JWT_SECRET_KEY:-change-me}
+      resend_api_key: ${RESEND_API_KEY:-}
+      email_from: ${EMAIL_FROM:-onboarding@lebooks.it}
+      frontend_url: ${FRONTEND_URL:-http://localhost}
+      backend_base_url: ${BACKEND_BASE_URL:-http://localhost}
+    volumes:
+      - backend_uploads:/app/backend/uploads
+    expose:
+      - "8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: lebooks_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
 
 volumes:
-  pgdata:
+  postgres_data:
+  backend_uploads:

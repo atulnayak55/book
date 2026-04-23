@@ -26,7 +26,6 @@ export function AuthDialog({ open, onClose, onSignedIn }: AuthDialogProps) {
   const [success, setSuccess] = useState<string | null>(null);
 
   const [name, setName] = useState("");
-  const [unipdId, setUnipdId] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [signupComplete, setSignupComplete] = useState(false);
@@ -49,7 +48,6 @@ export function AuthDialog({ open, onClose, onSignedIn }: AuthDialogProps) {
             name,
             email,
             password,
-            unipd_id: unipdId || undefined,
           });
           setSignupComplete(true);
           setSuccess(`${t("auth.signUpSuccess")} ${response.message}`);
@@ -197,10 +195,6 @@ export function AuthDialog({ open, onClose, onSignedIn }: AuthDialogProps) {
                   <label>
                     <span>{t("auth.name")}</span>
                     <input value={name} onChange={(event) => setName(event.target.value)} required />
-                  </label>
-                  <label>
-                    <span>{t("auth.unipdId")}</span>
-                    <input value={unipdId} onChange={(event) => setUnipdId(event.target.value)} />
                   </label>
                 </>
               ) : null}

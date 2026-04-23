@@ -142,3 +142,16 @@ class AuthToken(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     user = relationship("User", back_populates="auth_tokens")
+
+
+class PendingSignup(Base):
+    __tablename__ = "pending_signups"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, nullable=False, index=True)
+    name = Column(String, nullable=False)
+    unipd_id = Column(String, nullable=True)
+    hashed_password = Column(String, nullable=False)
+    otp_hash = Column(String, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

@@ -124,6 +124,14 @@ export function ListingsPage({ authSession, chatConnection }: ListingsPageProps)
     void loadListingsByCourse();
   }, [selectedCourseId]);
 
+  const sortedDepartments = useMemo(() => {
+    return [...departments].sort((left, right) => left.name.localeCompare(right.name));
+  }, [departments]);
+
+  const sortedPrograms = useMemo(() => {
+    return [...programs].sort((left, right) => left.name.localeCompare(right.name));
+  }, [programs]);
+
   const selectedProgram = useMemo(() => {
     const programId = toId(selectedProgramId);
     if (!programId) {
@@ -133,7 +141,10 @@ export function ListingsPage({ authSession, chatConnection }: ListingsPageProps)
     return programs.find((program) => program.id === programId);
   }, [programs, selectedProgramId]);
 
-  const courses: Course[] = selectedProgram?.subjects ?? [];
+  const courses: Course[] = useMemo(() => {
+    const subjects = selectedProgram?.subjects ?? [];
+    return [...subjects].sort((left, right) => left.name.localeCompare(right.name));
+  }, [selectedProgram]);
   const selectedDepartment = useMemo(() => {
     const departmentId = toId(selectedDepartmentId);
     if (!departmentId) {
@@ -246,7 +257,7 @@ export function ListingsPage({ authSession, chatConnection }: ListingsPageProps)
               disabled={loadingFilters}
             >
               <option value="">{t("listings.option.allDepartments")}</option>
-              {departments.map((department) => (
+              {sortedDepartments.map((department) => (
                 <option key={department.id} value={String(department.id)}>
                   {department.name}
                 </option>
@@ -264,7 +275,7 @@ export function ListingsPage({ authSession, chatConnection }: ListingsPageProps)
               disabled={!selectedDepartmentId || loadingFilters}
             >
               <option value="">{t("listings.option.allPrograms")}</option>
-              {programs.map((program) => (
+              {sortedPrograms.map((program) => (
                 <option key={program.id} value={String(program.id)}>
                   {program.name}
                 </option>

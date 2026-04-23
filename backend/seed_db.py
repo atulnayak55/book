@@ -6,7 +6,7 @@ from database import models
 
 CSV_FILE_PATH = "/home/atul-nayak/book/unipd_courses_2025.csv"
 
-def seed_database():
+def seed_database(csv_file_path: str = CSV_FILE_PATH):
     print("🌱 Starting database seeding process...")
     db = SessionLocal()
     
@@ -28,7 +28,7 @@ def seed_database():
         links_cache.add((row.program_id, row.subject_id))
 
     try:
-        with open(CSV_FILE_PATH, mode='r', encoding='utf-8') as file:
+        with open(csv_file_path, mode='r', encoding='utf-8') as file:
             reader = csv.DictReader(file)
             
             row_count = 0
@@ -86,11 +86,11 @@ def seed_database():
         print(f"✅ Seeding complete! Successfully mapped Unipd taxonomy.")
         
     except FileNotFoundError:
-        print(f"❌ Error: Could not find the CSV file at {CSV_FILE_PATH}")
+        print(f"❌ Error: Could not find the CSV file at {csv_file_path}")
     except Exception as e:
         print(f"❌ An error occurred: {e}")
     finally:
         db.close()
 
 if __name__ == "__main__":
-    seed_database()
+    seed_database(sys.argv[1] if len(sys.argv) > 1 else CSV_FILE_PATH)
