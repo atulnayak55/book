@@ -35,7 +35,7 @@ def create_listing(
 @router.get("/", response_model=List[listing_schemas.ListingResponse])
 def read_listings(
     skip: int = 0,
-    limit: int = 50,
+    limit: Optional[int] = None,
     subject_id: Optional[int] = None,
     seller_id: Optional[int] = None,
     db: Session = Depends(get_db),

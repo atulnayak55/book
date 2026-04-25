@@ -1,25 +1,20 @@
 import { useMemo, useState } from "react";
 import { MainLayout } from "./layouts/MainLayout";
 import { ListingsPage } from "./pages/ListingsPage";
-import { InboxPage } from "./pages/InboxPage"; // <-- Import it
+import { InboxPage } from "./pages/InboxPage";
 import { MyListingsPage } from "./pages/MyListingsPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { getAuthSession, type AuthSession } from "./features/auth/session";
 import { useWebSocket, type WebSocketMessage } from "./hooks/useWebSocket";
 import "./App.css";
 import "./pages/ListingsPage.css";
-import "./pages/InboxPage.css"; // <-- Import styles
+import "./pages/InboxPage.css";
 
-function App() {
-  const currentPath = typeof window !== "undefined" ? window.location.pathname : "/";
+function AppShell() {
   const [currentView, setCurrentView] = useState<"listings" | "inbox" | "mylistings">("listings");
   const [session, setSession] = useState<AuthSession | null>(() => getAuthSession());
   const [readIncomingMessageIds, setReadIncomingMessageIds] = useState<Set<number>>(() => new Set());
   const chatConnection = useWebSocket(session?.userId, session?.token);
-
-  if (currentPath === "/reset-password") {
-    return <ResetPasswordPage />;
-  }
 
   const unreadCount = useMemo(() => {
     if (!session || currentView === "inbox") {
@@ -78,6 +73,16 @@ function App() {
       {currentView === "mylistings" ? <MyListingsPage session={session} /> : null}
     </MainLayout>
   );
+}
+
+function App() {
+  const currentPath = typeof window !== "undefined" ? window.location.pathname : "/";
+
+  if (currentPath === "/reset-password") {
+    return <ResetPasswordPage />;
+  }
+
+  return <AppShell />;
 }
 
 export default App;

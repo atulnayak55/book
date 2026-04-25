@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { AuthSession } from "../features/auth/session";
 import { deleteListing, fetchListings } from "../features/listings/api";
 import { isOwnListing } from "../features/listings/filter";
-import { useI18n } from "../i18n/I18nProvider";
+import { useI18n } from "../i18n/useI18n";
 import { backendBaseUrl } from "../lib/api";
 import type { Listing } from "../types/domain";
 import { formatEuro } from "../utils/format";

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 
 export type WebSocketMessage = {
   id?: number;
@@ -17,30 +17,78 @@ export type ReadReceipt = {
   seen_at: string;
 };
 
+type WebSocketState = {
+  messages: WebSocketMessage[];
+  readReceipts: ReadReceipt[];
+};
+
+type WebSocketAction =
+  | { type: "append_message"; message: WebSocketMessage }
+  | { type: "apply_read_receipt"; receipt: ReadReceipt }
+  | { type: "reset" };
+
+const initialState: WebSocketState = {
+  messages: [],
+  readReceipts: [],
+};
+
+function websocketReducer(state: WebSocketState, action: WebSocketAction): WebSocketState {
+  switch (action.type) {
+    case "append_message":
+      return {
+        ...state,
+        messages: [...state.messages, action.message],
+      };
+    case "apply_read_receipt":
+      return {
+        readReceipts: [...state.readReceipts, action.receipt],
+        messages: state.messages.map((message) =>
+          message.id !== undefined && action.receipt.message_ids.includes(message.id)
+            ? { ...message, seen_at: action.receipt.seen_at }
+            : message,
+        ),
+      };
+    case "reset":
+      return initialState;
+    default:
+      return state;
+  }
+}
+
 export function useWebSocket(userId: number | undefined, token: string | undefined) {
   const ws = useRef<WebSocket | null>(null);
-  const [messages, setMessages] = useState<WebSocketMessage[]>([]);
-  const [readReceipts, setReadReceipts] = useState<ReadReceipt[]>([]);
+  const [state, dispatch] = useReducer(websocketReducer, initialState);
+
+  const applyReadReceipt = useCallback((receipt: ReadReceipt) => {
+    dispatch({ type: "apply_read_receipt", receipt });
+  }, []);
 
   useEffect(() => {
-    if (!userId || !token) return;
+    if (userId && token) {
+      return;
+    }
 
-    const defaultWsBaseUrl = (() => {
-      if (typeof window === "undefined") {
-        return "ws://127.0.0.1:8000";
-      }
+    if (ws.current) {
+      ws.current.close();
+      ws.current = null;
+    }
+    dispatch({ type: "reset" });
+  }, [userId, token]);
 
-      const { hostname, protocol, port } = window.location;
-      if (port === "5173" || port === "5174") {
-        return `ws://${hostname}:8000`;
-      }
+  useEffect(() => {
+    if (!userId || !token) {
+      return;
+    }
 
-      const wsProtocol = protocol === "https:" ? "wss" : "ws";
-      return `${wsProtocol}://${window.location.host}`;
-    })();
+    const browserHost = typeof window !== "undefined" ? window.location.hostname : "127.0.0.1";
+    const wsProtocol = typeof window !== "undefined" && window.location.protocol === "https:"
+      ? "wss"
+      : "ws";
+    const defaultWsBaseUrl = `${wsProtocol}://${browserHost}:8000`;
     const baseUrl = import.meta.env.VITE_WS_BASE_URL ?? defaultWsBaseUrl;
     const wsUrl = `${baseUrl}/chat/ws?token=${encodeURIComponent(token)}`;
 
+    dispatch({ type: "reset" });
     console.log(`Attempting to connect to WebSocket: ${wsUrl}`);
     ws.current = new WebSocket(wsUrl);
 
@@ -53,25 +101,15 @@ export function useWebSocket(userId: number | undefined, token: string | undefin
       console.log("Incoming message from server:", data);
 
       if (data.type === "read_receipt") {
-        setReadReceipts((prev) => [
-          ...prev,
-          {
-            room_id: data.room_id,
-            message_ids: data.message_ids ?? [],
-            seen_at: data.seen_at,
-          },
-        ]);
-        setMessages((prev) =>
-          prev.map((message) =>
-            message.id !== undefined && data.message_ids?.includes(message.id)
-              ? { ...message, seen_at: data.seen_at }
-              : message,
-          ),
-        );
+        applyReadReceipt({
+          room_id: data.room_id,
+          message_ids: data.message_ids ?? [],
+          seen_at: data.seen_at,
+        });
         return;
       }
 
-      setMessages((prev) => [...prev, data]);
+      dispatch({ type: "append_message", message: data });
     };
 
     return () => {
@@ -80,7 +118,7 @@ export function useWebSocket(userId: number | undefined, token: string | undefin
         ws.current = null;
       }
     };
-  }, [userId, token]);
+  }, [applyReadReceipt, userId, token]);
 
   const sendMessage = useCallback((msg: WebSocketMessage) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
@@ -92,8 +130,14 @@ export function useWebSocket(userId: number | undefined, token: string | undefin
   }, []);
 
   const addMessage = useCallback((msg: WebSocketMessage) => {
-    setMessages((prev) => [...prev, msg]);
+    dispatch({ type: "append_message", message: msg });
   }, []);
 
-  return { messages, readReceipts, sendMessage, addMessage };
+  return {
+    messages: state.messages,
+    readReceipts: state.readReceipts,
+    sendMessage,
+    addMessage,
+    addReadReceipt: applyReadReceipt,
+  };
 }

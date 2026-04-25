@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql import func
 from typing import Dict, List
 
@@ -19,25 +19,35 @@ UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: Dict[int, WebSocket] = {}
+        self.active_connections: Dict[int, List[WebSocket]] = {}
 
     async def connect(self, user_id: int, websocket: WebSocket):
         await websocket.accept()
-        self.active_connections[user_id] = websocket
+        self.active_connections.setdefault(user_id, []).append(websocket)
 
-    def disconnect(self, user_id: int):
-        if user_id in self.active_connections:
+    def disconnect(self, user_id: int, websocket: WebSocket):
+        connections = self.active_connections.get(user_id)
+        if not connections:
+            return
+
+        remaining_connections = [connection for connection in connections if connection is not websocket]
+        if remaining_connections:
+            self.active_connections[user_id] = remaining_connections
+        else:
             del self.active_connections[user_id]
 
     async def send_personal_message(self, message: dict, user_id: int):
-        print(f"Attempting to send message to User {user_id}")
-        print(f"Currently online users: {list(self.active_connections.keys())}")
+        connections = list(self.active_connections.get(user_id, []))
+        stale_connections: List[WebSocket] = []
 
-        if user_id in self.active_connections:
-            websocket = self.active_connections[user_id]
-            await websocket.send_json(message)
-        else:
-            print(f"FAILED: User {user_id} is not in active_connections.")
+        for websocket in connections:
+            try:
+                await websocket.send_json(message)
+            except Exception:
+                stale_connections.append(websocket)
+
+        for websocket in stale_connections:
+            self.disconnect(user_id, websocket)
 
 manager = ConnectionManager()
 
@@ -94,13 +104,58 @@ def get_user_chat_rooms(
     current_user: models.User = Depends(get_current_user)
 ):
     """Fetch all chat rooms where the current user is either the buyer or the seller."""
-    rooms = db.query(models.ChatRoom).filter(
+    room_ids = db.query(models.ChatRoom.id).outerjoin(
+        models.Message,
+        models.Message.room_id == models.ChatRoom.id,
+    ).filter(
         or_(
             models.ChatRoom.buyer_id == current_user.id,
             models.ChatRoom.seller_id == current_user.id
         )
+    ).group_by(
+        models.ChatRoom.id,
+    ).order_by(
+        func.max(models.Message.timestamp).desc().nullslast(),
+        models.ChatRoom.id.desc(),
     ).all()
-    return rooms
+
+    ordered_room_ids = [room_id for room_id, in room_ids]
+    if not ordered_room_ids:
+        return []
+
+    rooms = db.query(models.ChatRoom).options(
+        joinedload(models.ChatRoom.listing),
+        joinedload(models.ChatRoom.buyer),
+        joinedload(models.ChatRoom.seller),
+    ).filter(
+        models.ChatRoom.id.in_(ordered_room_ids),
+    ).all()
+
+    rooms_by_id = {room.id: room for room in rooms}
+    return [rooms_by_id[room_id] for room_id in ordered_room_ids if room_id in rooms_by_id]
+
+
+@router.get("/rooms/{room_id}", response_model=chat_schemas.ChatRoomDetail)
+def get_chat_room(
+    room_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    room = db.query(models.ChatRoom).options(
+        joinedload(models.ChatRoom.listing),
+        joinedload(models.ChatRoom.buyer),
+        joinedload(models.ChatRoom.seller),
+    ).filter(
+        models.ChatRoom.id == room_id,
+    ).first()
+
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    if current_user.id not in [room.buyer_id, room.seller_id]:
+        raise HTTPException(status_code=403, detail="Not authorized to view this room")
+
+    return room
 
 
 @router.get("/rooms/{room_id}/messages", response_model=List[chat_schemas.MessageResponse])
@@ -208,6 +263,7 @@ async def upload_chat_image(
     db.refresh(db_message)
 
     full_message = message_to_payload(db_message)
+    await manager.send_personal_message(full_message, current_user.id)
     await manager.send_personal_message(full_message, receiver_id)
 
     return db_message
@@ -252,8 +308,13 @@ async def websocket_endpoint(
                 await websocket.send_json({"error": "Receiver does not belong to this conversation"})
                 continue
 
+            normalized_content = (content or "").strip()
+            if not normalized_content:
+                await websocket.send_json({"error": "Message content cannot be empty"})
+                continue
+
             # Save to DB
-            db_message = models.Message(content=content, room_id=room_id, sender_id=user_id)
+            db_message = models.Message(content=normalized_content, room_id=room_id, sender_id=user_id)
             db.add(db_message)
             db.commit()
             db.refresh(db_message)
@@ -264,4 +325,6 @@ async def websocket_endpoint(
             await manager.send_personal_message(full_message, user_id)
             await manager.send_personal_message(full_message, receiver_id)
     except WebSocketDisconnect:
-        manager.disconnect(user_id)
+        pass
+    finally:
+        manager.disconnect(user_id, websocket)

@@ -17,6 +17,11 @@ def validate_signup_email(email: str) -> str:
     return validated.normalized
 
 
+def normalize_email(email: str) -> str:
+    validated = validate_email(email, check_deliverability=False)
+    return validated.normalized
+
+
 def create_auth_token(
     db: Session,
     *,
@@ -73,6 +78,7 @@ def build_reset_password_expiry() -> datetime:
 
 __all__ = [
     "EmailNotValidError",
+    "normalize_email",
     "RESET_PASSWORD_PURPOSE",
     "VERIFY_EMAIL_PURPOSE",
     "build_reset_password_expiry",

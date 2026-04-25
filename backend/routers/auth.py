@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -11,27 +13,37 @@ from core.security import get_password_hash
 from schemas import auth as auth_schemas
 from schemas import user as user_schemas
 from services.email import send_password_reset_email, send_signup_otp_email
-from services.pending_signup import (
-    create_or_replace_pending_signup,
-    resend_pending_signup_otp,
-    verify_pending_signup,
-)
+from services.pending_signup import pending_signup_store
 from services.user_security import (
     EmailNotValidError,
     RESET_PASSWORD_PURPOSE,
     build_reset_password_expiry,
     consume_token,
     create_auth_token,
+    normalize_email,
+    revoke_tokens,
     validate_signup_email,
 )
 
 router = APIRouter(tags=["Authentication"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
+
+def normalize_email_or_400(email: str) -> str:
+    try:
+        return normalize_email(email)
+    except EmailNotValidError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
 @router.post("/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     # 1. Find user
-    user = crud_user.get_user_by_email(db, email=form_data.username)
+    try:
+        normalized_email = normalize_email(form_data.username)
+    except EmailNotValidError:
+        raise HTTPException(status_code=400, detail="Incorrect email or password")
+
+    user = crud_user.get_user_by_email(db, email=normalized_email)
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect email or password")
         
@@ -102,8 +114,7 @@ def start_signup(
         if existing_unipd_id:
             raise HTTPException(status_code=400, detail="Unipd ID already registered")
 
-    pending_signup, otp_code = create_or_replace_pending_signup(
-        db,
+    pending_signup = pending_signup_store.create_or_replace(
         name=payload.name,
         email=normalized_email,
         unipd_id=payload.unipd_id,
@@ -112,7 +123,7 @@ def start_signup(
     send_signup_otp_email(
         recipient_email=pending_signup.email,
         recipient_name=pending_signup.name,
-        otp_code=otp_code,
+        otp_code=pending_signup.otp_code,
     )
     return {
         "message": "Verification code sent",
@@ -125,7 +136,8 @@ def verify_signup_otp(
     payload: auth_schemas.SignupVerifyRequest,
     db: Session = Depends(get_db),
 ):
-    pending_signup = verify_pending_signup(db, email=payload.email, otp_code=payload.otp_code)
+    normalized_email = normalize_email_or_400(payload.email)
+    pending_signup = pending_signup_store.verify(email=normalized_email, otp_code=payload.otp_code)
     if not pending_signup:
         raise HTTPException(status_code=400, detail="Invalid or expired verification code")
 
@@ -148,6 +160,7 @@ def verify_signup_otp(
         hashed_password=pending_signup.hashed_password,
     )
     created_user.is_verified = True
+    created_user.email_verified_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(created_user)
     return created_user
@@ -158,19 +171,18 @@ def resend_signup_otp(
     payload: auth_schemas.ForgotPasswordRequest,
     db: Session = Depends(get_db),
 ):
-    normalized_email = payload.email.strip().lower()
+    normalized_email = normalize_email_or_400(payload.email)
     if crud_user.get_user_by_email(db, email=normalized_email):
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    pending_signup_data = resend_pending_signup_otp(db, email=normalized_email)
-    if not pending_signup_data:
+    pending_signup = pending_signup_store.resend(email=normalized_email)
+    if not pending_signup:
         raise HTTPException(status_code=404, detail="No pending signup found for this email")
-    pending_signup, otp_code = pending_signup_data
 
     send_signup_otp_email(
         recipient_email=pending_signup.email,
         recipient_name=pending_signup.name,
-        otp_code=otp_code,
+        otp_code=pending_signup.otp_code,
     )
     return {
         "message": "Verification code resent",
@@ -180,8 +192,10 @@ def resend_signup_otp(
 
 @router.post("/auth/forgot-password", response_model=auth_schemas.MessageResponse)
 def forgot_password(payload: auth_schemas.ForgotPasswordRequest, db: Session = Depends(get_db)):
-    user = crud_user.get_user_by_email(db, email=payload.email)
+    normalized_email = normalize_email_or_400(payload.email)
+    user = crud_user.get_user_by_email(db, email=normalized_email)
     if user:
+        revoke_tokens(db, user_id=user.id, purpose=RESET_PASSWORD_PURPOSE)
         _, raw_token = create_auth_token(
             db,
             user_id=user.id,
@@ -207,6 +221,6 @@ def reset_password(
         raise HTTPException(status_code=404, detail="User not found")
 
     user.hashed_password = get_password_hash(payload.new_password)
-    db.commit()
+    revoke_tokens(db, user_id=user.id, purpose=RESET_PASSWORD_PURPOSE)
 
     return {"message": "Password reset successfully"}

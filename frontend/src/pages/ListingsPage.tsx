@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ListingCard } from "../components/ListingCard";
 import { SearchBar } from "../components/SearchBar";
 import { SelectField } from "../components/SelectField";
@@ -11,7 +11,7 @@ import { ListingDetailsDialog } from "../features/listings/ListingDetailsDialog"
 import { SellBookDialog } from "../features/listings/SellBookDialog";
 import { fetchDepartments, fetchPrograms } from "../features/taxonomy/api";
 import type { useWebSocket } from "../hooks/useWebSocket";
-import { useI18n } from "../i18n/I18nProvider";
+import { useI18n } from "../i18n/useI18n";
 import type { Course, Department, Listing, Program } from "../types/domain";
 
 const LISTINGS_PER_PAGE = 25;
@@ -50,9 +50,9 @@ export function ListingsPage({ authSession, chatConnection }: ListingsPageProps)
   const [chatListing, setChatListing] = useState<Listing | null>(null);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [detailsListing, setDetailsListing] = useState<Listing | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [requestedPage, setRequestedPage] = useState(1);
 
-  async function refreshListings(subjectId?: number) {
+  const refreshListings = useCallback(async (subjectId?: number) => {
     setLoadingListings(true);
     setError(null);
     try {
@@ -63,7 +63,7 @@ export function ListingsPage({ authSession, chatConnection }: ListingsPageProps)
     } finally {
       setLoadingListings(false);
     }
-  }
+  }, [t]);
 
   useEffect(() => {
     async function loadInitialData() {
@@ -87,7 +87,7 @@ export function ListingsPage({ authSession, chatConnection }: ListingsPageProps)
     }
 
     void loadInitialData();
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     async function loadPrograms() {
@@ -114,7 +114,7 @@ export function ListingsPage({ authSession, chatConnection }: ListingsPageProps)
     }
 
     void loadPrograms();
-  }, [selectedDepartmentId]);
+  }, [selectedDepartmentId, t]);
 
   useEffect(() => {
     async function loadListingsByCourse() {
@@ -122,15 +122,7 @@ export function ListingsPage({ authSession, chatConnection }: ListingsPageProps)
     }
 
     void loadListingsByCourse();
-  }, [selectedCourseId]);
-
-  const sortedDepartments = useMemo(() => {
-    return [...departments].sort((left, right) => left.name.localeCompare(right.name));
-  }, [departments]);
-
-  const sortedPrograms = useMemo(() => {
-    return [...programs].sort((left, right) => left.name.localeCompare(right.name));
-  }, [programs]);
+  }, [refreshListings, selectedCourseId]);
 
   const selectedProgram = useMemo(() => {
     const programId = toId(selectedProgramId);
@@ -141,10 +133,7 @@ export function ListingsPage({ authSession, chatConnection }: ListingsPageProps)
     return programs.find((program) => program.id === programId);
   }, [programs, selectedProgramId]);
 
-  const courses: Course[] = useMemo(() => {
-    const subjects = selectedProgram?.subjects ?? [];
-    return [...subjects].sort((left, right) => left.name.localeCompare(right.name));
-  }, [selectedProgram]);
+  const courses = useMemo<Course[]>(() => selectedProgram?.subjects ?? [], [selectedProgram]);
   const selectedDepartment = useMemo(() => {
     const departmentId = toId(selectedDepartmentId);
     if (!departmentId) {
@@ -191,6 +180,7 @@ export function ListingsPage({ authSession, chatConnection }: ListingsPageProps)
   ].filter((value): value is string => Boolean(value));
 
   const totalPages = Math.max(1, Math.ceil(visibleListings.length / LISTINGS_PER_PAGE));
+  const currentPage = Math.min(requestedPage, totalPages);
 
   const paginatedListings = useMemo(() => {
     const start = (currentPage - 1) * LISTINGS_PER_PAGE;
@@ -200,21 +190,12 @@ export function ListingsPage({ authSession, chatConnection }: ListingsPageProps)
   const pageStart = visibleListings.length === 0 ? 0 : (currentPage - 1) * LISTINGS_PER_PAGE + 1;
   const pageEnd = Math.min(currentPage * LISTINGS_PER_PAGE, visibleListings.length);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchText, selectedCourseId, selectedDepartmentId, selectedProgramId]);
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
-
   function resetFilters() {
     setSearchText("");
     setSelectedDepartmentId("");
     setSelectedProgramId("");
     setSelectedCourseId("");
+    setRequestedPage(1);
   }
 
   function handleMessageListing(clickedListing: Listing) {
@@ -238,7 +219,13 @@ export function ListingsPage({ authSession, chatConnection }: ListingsPageProps)
       <section className="market-controls" aria-label={t("nav.marketplace")}>
         <div className="listings-toolbar">
           <div className="toolbar-search">
-            <SearchBar value={searchText} onChange={setSearchText} />
+            <SearchBar
+              value={searchText}
+              onChange={(value) => {
+                setSearchText(value);
+                setRequestedPage(1);
+              }}
+            />
             <p className="listings-toolbar-note">{t("listings.browseHint")}</p>
           </div>
         </div>
@@ -253,11 +240,12 @@ export function ListingsPage({ authSession, chatConnection }: ListingsPageProps)
                 setSelectedDepartmentId(value);
                 setSelectedProgramId("");
                 setSelectedCourseId("");
+                setRequestedPage(1);
               }}
               disabled={loadingFilters}
             >
               <option value="">{t("listings.option.allDepartments")}</option>
-              {sortedDepartments.map((department) => (
+              {departments.map((department) => (
                 <option key={department.id} value={String(department.id)}>
                   {department.name}
                 </option>
@@ -271,11 +259,12 @@ export function ListingsPage({ authSession, chatConnection }: ListingsPageProps)
               onChange={(value) => {
                 setSelectedProgramId(value);
                 setSelectedCourseId("");
+                setRequestedPage(1);
               }}
               disabled={!selectedDepartmentId || loadingFilters}
             >
               <option value="">{t("listings.option.allPrograms")}</option>
-              {sortedPrograms.map((program) => (
+              {programs.map((program) => (
                 <option key={program.id} value={String(program.id)}>
                   {program.name}
                 </option>
@@ -286,7 +275,10 @@ export function ListingsPage({ authSession, chatConnection }: ListingsPageProps)
               id="course-filter"
               label={t("listings.filter.course")}
               value={selectedCourseId}
-              onChange={setSelectedCourseId}
+              onChange={(value) => {
+                setSelectedCourseId(value);
+                setRequestedPage(1);
+              }}
               disabled={!selectedProgramId || loadingFilters}
             >
               <option value="">{t("listings.option.allCourses")}</option>
@@ -387,7 +379,7 @@ export function ListingsPage({ authSession, chatConnection }: ListingsPageProps)
               <button
                 type="button"
                 className="pagination-button pagination-arrow"
-                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                onClick={() => setRequestedPage((page) => Math.max(1, page - 1))}
                 disabled={currentPage === 1}
               >
                 {t("listings.pagination.previous")}
@@ -399,7 +391,7 @@ export function ListingsPage({ authSession, chatConnection }: ListingsPageProps)
                     key={page}
                     type="button"
                     className={`pagination-button ${page === currentPage ? "active" : ""}`}
-                    onClick={() => setCurrentPage(page)}
+                    onClick={() => setRequestedPage(page)}
                     aria-current={page === currentPage ? "page" : undefined}
                   >
                     {page}
@@ -410,7 +402,7 @@ export function ListingsPage({ authSession, chatConnection }: ListingsPageProps)
               <button
                 type="button"
                 className="pagination-button pagination-arrow"
-                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                onClick={() => setRequestedPage((page) => Math.min(totalPages, page + 1))}
                 disabled={currentPage === totalPages}
               >
                 {t("listings.pagination.next")}
@@ -430,27 +422,31 @@ export function ListingsPage({ authSession, chatConnection }: ListingsPageProps)
         }}
       />
 
-      <ListingDetailsDialog
-        open={detailsDialogOpen}
-        listing={detailsListing}
-        onClose={() => {
-          setDetailsDialogOpen(false);
-          setDetailsListing(null);
-        }}
-        onMessageClick={handleMessageListing}
-      />
+      {detailsDialogOpen && detailsListing ? (
+        <ListingDetailsDialog
+          open={detailsDialogOpen}
+          listing={detailsListing}
+          onClose={() => {
+            setDetailsDialogOpen(false);
+            setDetailsListing(null);
+          }}
+          onMessageClick={handleMessageListing}
+        />
+      ) : null}
 
-      <ChatDialog
-        open={chatDialogOpen}
-        listing={chatListing}
-        currentUserId={authSession?.userId ?? 0}
-        token={authSession?.token ?? ""}
-        chatConnection={chatConnection}
-        onClose={() => {
-          setChatDialogOpen(false);
-          setChatListing(null);
-        }}
-      />
+      {chatDialogOpen && chatListing ? (
+        <ChatDialog
+          open={chatDialogOpen}
+          listing={chatListing}
+          currentUserId={authSession?.userId ?? 0}
+          token={authSession?.token ?? ""}
+          chatConnection={chatConnection}
+          onClose={() => {
+            setChatDialogOpen(false);
+            setChatListing(null);
+          }}
+        />
+      ) : null}
     </section>
   );
 }

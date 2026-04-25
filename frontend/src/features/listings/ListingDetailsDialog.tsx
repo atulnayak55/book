@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useI18n } from "../../i18n/I18nProvider";
+import { useI18n } from "../../i18n/useI18n";
 import { backendBaseUrl } from "../../lib/api";
 import type { Listing } from "../../types/domain";
 import { formatEuro } from "../../utils/format";
@@ -23,14 +23,6 @@ export function ListingDetailsDialog({
   const imageUrls = useMemo(() => {
     return listing ? listing.images.map((image) => `${backendBaseUrl}${image.image_url}`) : [];
   }, [listing]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    setActiveImageIndex(0);
-  }, [listing?.id, open]);
 
   useEffect(() => {
     if (!open) {

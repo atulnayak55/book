@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useI18n } from "../i18n/I18nProvider";
+import { useI18n } from "../i18n/useI18n";
 import type { Listing } from "../types/domain";
 import { formatEuro } from "../utils/format";
 import { backendBaseUrl } from "../lib/api";

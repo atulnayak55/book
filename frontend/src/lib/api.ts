@@ -1,19 +1,10 @@
 import axios from "axios";
 
-function getDefaultBaseUrl(): string {
-  if (typeof window === "undefined") {
-    return "http://127.0.0.1:8000";
-  }
-
-  const { hostname, origin, port } = window.location;
-  if (port === "5173" || port === "5174") {
-    return `http://${hostname}:8000`;
-  }
-
-  return origin;
-}
-
-const DEFAULT_BASE_URL = getDefaultBaseUrl();
+const browserHost = typeof window !== "undefined" ? window.location.hostname : "127.0.0.1";
+const browserProtocol = typeof window !== "undefined" && window.location.protocol === "https:"
+  ? "https"
+  : "http";
+const DEFAULT_BASE_URL = `${browserProtocol}://${browserHost}:8000`;
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? DEFAULT_BASE_URL,

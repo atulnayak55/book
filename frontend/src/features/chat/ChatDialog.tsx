@@ -1,6 +1,13 @@
 import { useMemo, useState, useEffect } from "react";
-import { useI18n } from "../../i18n/I18nProvider";
-import { createOrGetChatRoom, fetchChatHistory, markChatRoomRead, type ChatRoomResponse, type MessageResponse } from "./api";
+import { useI18n } from "../../i18n/useI18n";
+import {
+  createOrGetChatRoom,
+  fetchChatHistory,
+  markChatRoomRead,
+  type ChatRoomResponse,
+  type MessageResponse,
+} from "./api";
+import { mergeChatMessages } from "./messageUtils";
 import type { useWebSocket } from "../../hooks/useWebSocket";
 import type { Listing } from "../../types/domain";
 import { formatMessageTime } from "../../utils/format";
@@ -29,28 +36,42 @@ export function ChatDialog({
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const { messages, readReceipts, sendMessage } = chatConnection;
+  const { messages, readReceipts, sendMessage, addReadReceipt } = chatConnection;
 
   // When the dialog opens, ping the backend to create/fetch the room
   useEffect(() => {
+    let cancelled = false;
+
     async function initRoom() {
       if (!open || !listing || !currentUserId || !token) return;
       
       try {
         const room = await createOrGetChatRoom({ listing_id: listing.id }, token);
         const messageHistory = await fetchChatHistory(room.id, token);
+        if (cancelled) {
+          return;
+        }
         setRoomId(room.id);
         setRoomInfo(room);
         setHistory(messageHistory);
-        void markChatRoomRead(room.id, token);
+        const receipt = await markChatRoomRead(room.id, token);
+        if (cancelled) {
+          return;
+        }
+        addReadReceipt(receipt);
         setError(null);
       } catch {
-        setError(t("chat.initError"));
+        if (!cancelled) {
+          setError(t("chat.initError"));
+        }
       }
     }
 
-    initRoom();
-  }, [open, listing, currentUserId, token]);
+    void initRoom();
+    return () => {
+      cancelled = true;
+    };
+  }, [addReadReceipt, currentUserId, listing, open, t, token]);
 
   useEffect(() => {
     if (!open || !roomId || !token) return;
@@ -65,24 +86,14 @@ export function ChatDialog({
     });
 
     if (hasUnreadIncomingLiveMessage) {
-      void markChatRoomRead(roomId, token);
+      void markChatRoomRead(roomId, token).then(addReadReceipt).catch(() => undefined);
     }
-  }, [currentUserId, messages, open, roomId, token]);
+  }, [addReadReceipt, currentUserId, messages, open, roomId, token]);
 
   // Filter messages to only show ones for THIS specific room
   const roomMessages = useMemo(() => {
-    const liveRoomMessages = messages.filter(m => m.room_id === roomId);
-    const seenIds = new Set<number>();
-    return [...history, ...liveRoomMessages].filter((message) => {
-      if (message.id === undefined) {
-        return true;
-      }
-      if (seenIds.has(message.id)) {
-        return false;
-      }
-      seenIds.add(message.id);
-      return true;
-    });
+    const liveRoomMessages = messages.filter((message) => message.room_id === roomId);
+    return mergeChatMessages(history, liveRoomMessages);
   }, [history, messages, roomId]);
 
   const receiptSeenByMessageId = useMemo(() => {
@@ -110,6 +121,8 @@ export function ChatDialog({
   }, [currentUserId, receiptSeenByMessageId, roomMessages]);
 
   if (!open || !listing) return null;
+
+  const otherPersonName = listing.seller.name;
 
   function handleSend(e: React.FormEvent) {
     e.preventDefault();
@@ -143,7 +156,10 @@ export function ChatDialog({
         <div className="chat-dialog-header">
           <div>
             <p>{t("chat.conversation")}</p>
-            <h2>{listing.title}</h2>
+            <h2>{otherPersonName}</h2>
+            <span className="chat-dialog-subtitle">
+              {t("inbox.aboutListing", { title: listing.title })}
+            </span>
           </div>
           <button className="auth-close" onClick={handleClose} aria-label={t("chat.close")}>x</button>
         </div>

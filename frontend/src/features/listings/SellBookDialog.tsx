@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useI18n } from "../../i18n/I18nProvider";
+import { useI18n } from "../../i18n/useI18n";
 import { fetchPrograms } from "../taxonomy/api";
 import { createListing, uploadListingImages } from "./api";
 import type { Department, Program } from "../../types/domain";
@@ -84,7 +84,7 @@ export function SellBookDialog({
     }
 
     void loadPrograms();
-  }, [departmentId]);
+  }, [departmentId, t]);
 
   const selectedProgram = useMemo(() => {
     const id = toId(programId);

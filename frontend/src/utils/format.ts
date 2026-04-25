@@ -21,3 +21,25 @@ export function formatMessageTime(value?: string | null, locale = "en-US"): stri
     minute: "2-digit",
   }).format(date);
 }
+
+export function formatConversationTime(value?: string | null, locale = "en-US"): string {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const now = new Date();
+  const sameDay = date.toDateString() === now.toDateString();
+  if (sameDay) {
+    return formatMessageTime(value, locale);
+  }
+
+  return new Intl.DateTimeFormat(locale, {
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}

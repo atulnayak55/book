@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import axios from "axios";
 
 import { resetPassword } from "../features/auth/api";
-import { useI18n } from "../i18n/I18nProvider";
+import { useI18n } from "../i18n/useI18n";
 
 export function ResetPasswordPage() {
   const { t } = useI18n();

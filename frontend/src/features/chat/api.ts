@@ -31,6 +31,12 @@ export type MessageResponse = {
   seen_at?: string | null;
 };
 
+export type ReadReceiptResponse = {
+  room_id: number;
+  message_ids: number[];
+  seen_at: string;
+};
+
 export async function createOrGetChatRoom(payload: ChatRoomCreatePayload, token: string): Promise<ChatRoomResponse> {
   const response = await api.post<ChatRoomResponse>("/chat/rooms", payload, {
     headers: { Authorization: `Bearer ${token}` },
@@ -46,6 +52,13 @@ export async function fetchChatRooms(token: string): Promise<ChatRoomDetail[]> {
   return response.data;
 }
 
+export async function fetchChatRoom(roomId: number, token: string): Promise<ChatRoomDetail> {
+  const response = await api.get<ChatRoomDetail>(`/chat/rooms/${roomId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return response.data;
+}
+
 export async function fetchChatHistory(roomId: number, token: string): Promise<MessageResponse[]> {
   const response = await api.get<MessageResponse[]>(`/chat/rooms/${roomId}/messages`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -53,10 +66,11 @@ export async function fetchChatHistory(roomId: number, token: string): Promise<M
   return response.data;
 }
 
-export async function markChatRoomRead(roomId: number, token: string): Promise<void> {
-  await api.post(`/chat/rooms/${roomId}/read`, null, {
+export async function markChatRoomRead(roomId: number, token: string): Promise<ReadReceiptResponse> {
+  const response = await api.post<ReadReceiptResponse>(`/chat/rooms/${roomId}/read`, null, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  return response.data;
 }
 
 export async function uploadChatImage(
