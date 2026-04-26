@@ -14,11 +14,13 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_days: int = 7
     resend_api_key: str | None = Field(default=None, alias="resend_api_key")
+    email_dev_fallback: bool | None = Field(default=None, alias="email_dev_fallback")
     email_from: str = "onboarding@lebooks.it"
     frontend_url: str = "http://localhost:5173"
     backend_base_url: str = "http://localhost:8000"
     verify_email_token_expire_hours: int = 24
     reset_password_token_expire_minutes: int = 30
+    upload_max_bytes: int = 5 * 1024 * 1024
 
     model_config = SettingsConfigDict(
         env_file=str(ROOT_DIR / ".env"),

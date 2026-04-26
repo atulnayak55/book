@@ -7,7 +7,7 @@ from crud import crud_user
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
-@router.get("/{user_id}", response_model=user_schemas.UserResponse)
+@router.get("/{user_id}", response_model=user_schemas.UserPublicResponse)
 def read_user(user_id: int, db: Session = Depends(get_db)):
     db_user = crud_user.get_user(db, user_id=user_id)
     if db_user is None:

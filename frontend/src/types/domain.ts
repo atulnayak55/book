@@ -19,8 +19,6 @@ export type Department = {
 export type User = {
   id: number;
   name: string;
-  email: string;
-  unipd_id?: string | null;
 };
 
 export type ListingImage = {

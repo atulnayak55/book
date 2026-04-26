@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 class MessageResponse(BaseModel):
@@ -8,15 +8,15 @@ class MessageResponse(BaseModel):
 
 
 class SignupStartRequest(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=80)
     email: EmailStr
-    unipd_id: str | None = None
-    password: str
+    unipd_id: str | None = Field(default=None, max_length=64)
+    password: str = Field(min_length=8, max_length=128)
 
 
 class SignupVerifyRequest(BaseModel):
     email: EmailStr
-    otp_code: str
+    otp_code: str = Field(pattern=r"^\d{6}$")
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -25,7 +25,7 @@ class ForgotPasswordRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     token: str
-    new_password: str
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class VerificationTokenResponse(BaseModel):

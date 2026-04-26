@@ -154,4 +154,6 @@ class PendingSignup(Base):
     hashed_password = Column(String, nullable=False)
     otp_hash = Column(String, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
+    verification_attempts = Column(Integer, nullable=False, default=0, server_default="0")
+    last_otp_sent_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

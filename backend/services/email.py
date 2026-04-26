@@ -1,17 +1,45 @@
+import logging
 from html import escape
 from urllib.parse import urlencode
+from urllib.parse import urlparse
 
 import resend
 
 from core.config import settings
 
 
+logger = logging.getLogger(__name__)
+
+
+class EmailDeliveryError(RuntimeError):
+    pass
+
+
 def _get_configured_sender() -> str:
     return settings.email_from
 
 
+def _is_local_url(url: str) -> bool:
+    parsed = urlparse(url)
+    return parsed.hostname in {"localhost", "127.0.0.1"}
+
+
+def _allow_dev_fallback() -> bool:
+    if settings.email_dev_fallback is not None:
+        return settings.email_dev_fallback
+
+    return _is_local_url(settings.frontend_url) and _is_local_url(settings.backend_base_url)
+
+
+def email_delivery_enabled() -> bool:
+    return bool(settings.resend_api_key) or _allow_dev_fallback()
+
+
 def _send_email(*, to: str, subject: str, html: str) -> None:
     if not settings.resend_api_key:
+        if not _allow_dev_fallback():
+            raise EmailDeliveryError("Email delivery is not configured")
+
         print(f"[email-dev-fallback] To: {to}")
         print(f"[email-dev-fallback] Subject: {subject}")
         print(html)
@@ -28,10 +56,15 @@ def _send_email(*, to: str, subject: str, html: str) -> None:
             }
         )
     except Exception as exc:
-        print(f"[email-dev-fallback] Delivery failed: {exc}")
-        print(f"[email-dev-fallback] To: {to}")
-        print(f"[email-dev-fallback] Subject: {subject}")
-        print(html)
+        if _allow_dev_fallback():
+            print(f"[email-dev-fallback] Delivery failed: {exc}")
+            print(f"[email-dev-fallback] To: {to}")
+            print(f"[email-dev-fallback] Subject: {subject}")
+            print(html)
+            return
+
+        logger.exception("Email delivery failed for subject '%s'", subject)
+        raise EmailDeliveryError("Email delivery failed") from exc
 
 
 def send_signup_otp_email(*, recipient_email: str, recipient_name: str, otp_code: str) -> None:

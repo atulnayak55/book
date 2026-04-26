@@ -1,9 +1,10 @@
-# routers/taxonomy.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List, Optional  # <-- Add Optional here
+from typing import List, Optional
 
 from database.database import get_db
+from database import models
+from routers.auth import get_current_user
 from schemas import taxonomy as taxonomy_schemas
 from crud import crud_taxonomy
 
@@ -16,7 +17,11 @@ def read_departments(search: Optional[str] = None, db: Session = Depends(get_db)
     return crud_taxonomy.get_departments(db, search=search)
 
 @router.post("/departments", response_model=taxonomy_schemas.DepartmentResponse, status_code=status.HTTP_201_CREATED)
-def create_department(department: taxonomy_schemas.DepartmentCreate, db: Session = Depends(get_db)):
+def create_department(
+    department: taxonomy_schemas.DepartmentCreate,
+    db: Session = Depends(get_db),
+    _current_user: models.User = Depends(get_current_user),
+):
     """Create a department."""
     existing = crud_taxonomy.get_department_by_name(db, name=department.name)
     if existing:
@@ -30,7 +35,11 @@ def read_programs(department_id: Optional[int] = None, search: Optional[str] = N
     return crud_taxonomy.get_programs(db, department_id=department_id, search=search)
 
 @router.post("/programs", response_model=taxonomy_schemas.ProgramResponse, status_code=status.HTTP_201_CREATED)
-def create_program(program: taxonomy_schemas.ProgramCreate, db: Session = Depends(get_db)):
+def create_program(
+    program: taxonomy_schemas.ProgramCreate,
+    db: Session = Depends(get_db),
+    _current_user: models.User = Depends(get_current_user),
+):
     """Create a program under a department."""
     department = crud_taxonomy.get_department(db, department_id=program.department_id)
     if not department:
@@ -48,7 +57,11 @@ def read_subjects(search: Optional[str] = None, db: Session = Depends(get_db)):
     return crud_taxonomy.get_subjects(db, search=search)
 
 @router.post("/subjects", response_model=taxonomy_schemas.SubjectResponse, status_code=status.HTTP_201_CREATED)
-def create_subject(subject: taxonomy_schemas.SubjectCreate, db: Session = Depends(get_db)):
+def create_subject(
+    subject: taxonomy_schemas.SubjectCreate,
+    db: Session = Depends(get_db),
+    _current_user: models.User = Depends(get_current_user),
+):
     """Create a subject."""
     existing = crud_taxonomy.get_subject_by_name(db, name=subject.name)
     if existing:
@@ -57,7 +70,12 @@ def create_subject(subject: taxonomy_schemas.SubjectCreate, db: Session = Depend
 
 
 @router.post("/programs/{p_id}/subjects/{s_id}", response_model=taxonomy_schemas.ProgramResponse)
-def link_subject_to_program(p_id: int, s_id: int, db: Session = Depends(get_db)):
+def link_subject_to_program(
+    p_id: int,
+    s_id: int,
+    db: Session = Depends(get_db),
+    _current_user: models.User = Depends(get_current_user),
+):
     """Link an existing subject to an existing program."""
     program = crud_taxonomy.get_program(db, program_id=p_id)
     if not program:

@@ -12,8 +12,14 @@ from core.security import verify_password, create_access_token, SECRET_KEY, ALGO
 from core.security import get_password_hash
 from schemas import auth as auth_schemas
 from schemas import user as user_schemas
-from services.email import send_password_reset_email, send_signup_otp_email
+from services.email import (
+    EmailDeliveryError,
+    email_delivery_enabled,
+    send_password_reset_email,
+    send_signup_otp_email,
+)
 from services.pending_signup import (
+    PendingSignupResendTooSoonError,
     create_or_replace_pending_signup,
     resend_pending_signup_otp,
     verify_pending_signup,
@@ -104,6 +110,9 @@ def start_signup(
     payload: auth_schemas.SignupStartRequest,
     db: Session = Depends(get_db),
 ):
+    if not email_delivery_enabled():
+        raise HTTPException(status_code=503, detail="Email delivery is not configured")
+
     try:
         normalized_email = validate_signup_email(payload.email)
     except EmailNotValidError as exc:
@@ -125,18 +134,21 @@ def start_signup(
         unipd_id=payload.unipd_id,
         hashed_password=get_password_hash(payload.password),
     )
-    send_signup_otp_email(
-        recipient_email=pending_signup.email,
-        recipient_name=pending_signup.name,
-        otp_code=otp_code,
-    )
+    try:
+        send_signup_otp_email(
+            recipient_email=pending_signup.email,
+            recipient_name=pending_signup.name,
+            otp_code=otp_code,
+        )
+    except EmailDeliveryError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return {
         "message": "Verification code sent",
         "expires_at": pending_signup.expires_at,
     }
 
 
-@router.post("/auth/signup/verify", response_model=user_schemas.UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/auth/signup/verify", response_model=user_schemas.UserProfileResponse, status_code=status.HTTP_201_CREATED)
 def verify_signup_otp(
     payload: auth_schemas.SignupVerifyRequest,
     db: Session = Depends(get_db),
@@ -176,20 +188,29 @@ def resend_signup_otp(
     payload: auth_schemas.ForgotPasswordRequest,
     db: Session = Depends(get_db),
 ):
+    if not email_delivery_enabled():
+        raise HTTPException(status_code=503, detail="Email delivery is not configured")
+
     normalized_email = normalize_email_or_400(payload.email)
     if crud_user.get_user_by_email(db, email=normalized_email):
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    resend_result = resend_pending_signup_otp(db, email=normalized_email)
+    try:
+        resend_result = resend_pending_signup_otp(db, email=normalized_email)
+    except PendingSignupResendTooSoonError as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
     if not resend_result:
         raise HTTPException(status_code=404, detail="No pending signup found for this email")
     pending_signup, otp_code = resend_result
 
-    send_signup_otp_email(
-        recipient_email=pending_signup.email,
-        recipient_name=pending_signup.name,
-        otp_code=otp_code,
-    )
+    try:
+        send_signup_otp_email(
+            recipient_email=pending_signup.email,
+            recipient_name=pending_signup.name,
+            otp_code=otp_code,
+        )
+    except EmailDeliveryError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return {
         "message": "Verification code resent",
         "expires_at": pending_signup.expires_at,
@@ -198,6 +219,9 @@ def resend_signup_otp(
 
 @router.post("/auth/forgot-password", response_model=auth_schemas.MessageResponse)
 def forgot_password(payload: auth_schemas.ForgotPasswordRequest, db: Session = Depends(get_db)):
+    if not email_delivery_enabled():
+        raise HTTPException(status_code=503, detail="Email delivery is not configured")
+
     normalized_email = normalize_email_or_400(payload.email)
     user = crud_user.get_user_by_email(db, email=normalized_email)
     if user:
@@ -208,7 +232,11 @@ def forgot_password(payload: auth_schemas.ForgotPasswordRequest, db: Session = D
             purpose=RESET_PASSWORD_PURPOSE,
             expires_at=build_reset_password_expiry(),
         )
-        send_password_reset_email(recipient_email=user.email, recipient_name=user.name, token=raw_token)
+        try:
+            send_password_reset_email(recipient_email=user.email, recipient_name=user.name, token=raw_token)
+        except EmailDeliveryError as exc:
+            revoke_tokens(db, user_id=user.id, purpose=RESET_PASSWORD_PURPOSE)
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     return {"message": "If an account exists for that email, a password reset link has been sent"}
 

@@ -1,9 +1,8 @@
 {
-    auto_https off
     admin off
 }
 
-:80 {
+{$APP_SITE} {
     encode zstd gzip
 
     @api path /api/*

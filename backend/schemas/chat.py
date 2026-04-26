@@ -2,7 +2,7 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime
-from .user import UserResponse
+from .user import UserPublicResponse
 
 class MessageBase(BaseModel):
     content: Optional[str] = None
@@ -49,7 +49,7 @@ class ListingMini(BaseModel):
 
 class ChatRoomDetail(ChatRoomResponse):
     listing: ListingMini
-    buyer: UserResponse
-    seller: UserResponse
+    buyer: UserPublicResponse
+    seller: UserPublicResponse
 
     model_config = ConfigDict(from_attributes=True)

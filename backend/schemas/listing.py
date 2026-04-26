@@ -2,7 +2,7 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime
-from .user import UserResponse
+from .user import UserPublicResponse
 
 # We create a tiny schema for images to nest inside the listing
 class ListingImageResponse(BaseModel):
@@ -32,7 +32,7 @@ class ListingResponse(ListingBase):
     seller_id: int
     
     # We can nest the seller info and images so the frontend has everything it needs in one request
-    seller: UserResponse
+    seller: UserPublicResponse
     images: List[ListingImageResponse] = []
 
     model_config = ConfigDict(from_attributes=True)

@@ -27,8 +27,8 @@ services:
       jwt_secret_key: ${JWT_SECRET_KEY:-change-me}
       resend_api_key: ${RESEND_API_KEY:-}
       email_from: ${EMAIL_FROM:-onboarding@lebooks.it}
-      frontend_url: http://${APP_HOST:-46.225.99.187}
-      backend_base_url: http://${APP_HOST:-46.225.99.187}/api
+      frontend_url: ${APP_SCHEME:-http}://${APP_HOST:-46.225.99.187}
+      backend_base_url: ${APP_SCHEME:-http}://${APP_HOST:-46.225.99.187}/api
     volumes:
       - backend_uploads:/app/backend/uploads
     expose:
@@ -51,8 +51,11 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    environment:
+      APP_SITE: ${APP_SITE:-:80}
     ports:
       - "80:80"
+      - "443:443"
 
 volumes:
   postgres_data:

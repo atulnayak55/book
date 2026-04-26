@@ -1,6 +1,4 @@
 # routers/chat.py
-import shutil
-import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, UploadFile, File, Form, status
@@ -13,6 +11,7 @@ from database.database import get_db
 from database import models
 from schemas import chat as chat_schemas  # Ensure you have created this schema!
 from routers.auth import get_current_user, get_user_from_token
+from services.uploads import save_validated_image
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
@@ -241,16 +240,8 @@ async def upload_chat_image(
     if receiver_id == current_user.id:
         raise HTTPException(status_code=400, detail="Receiver must be the other room participant")
 
-    filename = file.filename or "upload"
-    ext = filename.split(".")[-1] if "." in filename else "bin"
-    safe_filename = f"chat_{uuid.uuid4()}.{ext}"
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    filepath = UPLOAD_DIR / safe_filename
-
-    with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    image_url = f"/uploads/{safe_filename}"
+    stored_filename = save_validated_image(file=file, upload_dir=UPLOAD_DIR, filename_prefix="chat_")
+    image_url = f"/uploads/{stored_filename}"
 
     db_message = models.Message(
         content="",

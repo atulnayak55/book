@@ -8,6 +8,12 @@ from database import models
 
 
 OTP_TTL_MINUTES = 10
+OTP_VERIFY_ATTEMPT_LIMIT = 5
+OTP_RESEND_COOLDOWN_SECONDS = 60
+
+
+class PendingSignupResendTooSoonError(RuntimeError):
+    pass
 
 
 @dataclass
@@ -45,6 +51,7 @@ def create_or_replace_pending_signup(
     cleanup_expired_pending_signups(db)
     otp_code = _generate_otp_code()
     expires_at = _build_expiry()
+    now = datetime.now(timezone.utc)
 
     db_pending_signup = db.query(models.PendingSignup).filter(
         models.PendingSignup.email == email
@@ -58,6 +65,8 @@ def create_or_replace_pending_signup(
             hashed_password=hashed_password,
             otp_hash=hash_opaque_token(otp_code),
             expires_at=expires_at,
+            verification_attempts=0,
+            last_otp_sent_at=now,
         )
         db.add(db_pending_signup)
     else:
@@ -66,6 +75,8 @@ def create_or_replace_pending_signup(
         db_pending_signup.hashed_password = hashed_password
         db_pending_signup.otp_hash = hash_opaque_token(otp_code)
         db_pending_signup.expires_at = expires_at
+        db_pending_signup.verification_attempts = 0
+        db_pending_signup.last_otp_sent_at = now
 
     db.commit()
     db.refresh(db_pending_signup)
@@ -79,7 +90,15 @@ def verify_pending_signup(db: Session, *, email: str, otp_code: str) -> PendingS
     ).first()
     if db_pending_signup is None:
         return None
+    if db_pending_signup.verification_attempts >= OTP_VERIFY_ATTEMPT_LIMIT:
+        db.delete(db_pending_signup)
+        db.commit()
+        return None
     if db_pending_signup.otp_hash != hash_opaque_token(otp_code):
+        db_pending_signup.verification_attempts += 1
+        if db_pending_signup.verification_attempts >= OTP_VERIFY_ATTEMPT_LIMIT:
+            db.delete(db_pending_signup)
+        db.commit()
         return None
 
     payload = PendingSignupPayload(
@@ -102,9 +121,19 @@ def resend_pending_signup_otp(db: Session, *, email: str) -> tuple[models.Pendin
     if db_pending_signup is None:
         return None
 
+    now = datetime.now(timezone.utc)
+    resend_allowed_at = db_pending_signup.last_otp_sent_at + timedelta(seconds=OTP_RESEND_COOLDOWN_SECONDS)
+    if resend_allowed_at > now:
+        seconds_remaining = int((resend_allowed_at - now).total_seconds())
+        raise PendingSignupResendTooSoonError(
+            f"Please wait {max(seconds_remaining, 1)} seconds before requesting another verification code"
+        )
+
     otp_code = _generate_otp_code()
     db_pending_signup.otp_hash = hash_opaque_token(otp_code)
     db_pending_signup.expires_at = _build_expiry()
+    db_pending_signup.verification_attempts = 0
+    db_pending_signup.last_otp_sent_at = now
     db.commit()
     db.refresh(db_pending_signup)
     return db_pending_signup, otp_code

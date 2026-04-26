@@ -1,10 +1,10 @@
 # Deployment
 
-This repo is set up to run on a VM with Docker Compose and Caddy serving the frontend on port `80`.
+This repo is set up to run on a VM with Docker Compose and Caddy serving the frontend.
 
 ## Expected Public URL
 
-The current production target is:
+The current default target is:
 
 - `http://46.225.99.187`
 
@@ -14,12 +14,17 @@ Password reset emails will use that public URL.
 
 1. Copy `.env.example` to `.env`
 2. Fill in at least:
+   - `APP_HOST`
    - `POSTGRES_PASSWORD`
    - `JWT_SECRET_KEY`
    - `RESEND_API_KEY`
    - `EMAIL_FROM`
-3. Open port `80` on the VM firewall/security group
-4. From the repo root run:
+3. For HTTPS on a real domain, also set:
+   - `APP_SCHEME=https`
+   - `APP_SITE=your-domain.example`
+4. Open port `80` on the VM firewall/security group
+5. If using HTTPS, also open port `443`
+6. From the repo root run:
 
 ```bash
 docker compose up -d --build
@@ -36,4 +41,5 @@ docker compose up -d --build
 - The frontend talks to the backend through same-origin `/api`
 - Uploaded files are persisted in the `backend_uploads` volume
 - PostgreSQL data is persisted in the `postgres_data` volume
-- This setup is HTTP-only because the app is deployed directly on a raw IP. For HTTPS, use a real domain and point DNS to the VM
+- If `APP_SITE` is a real domain, Caddy can manage HTTPS automatically
+- If you deploy directly on a raw IP, keep `APP_SCHEME=http` and `APP_SITE=:80`

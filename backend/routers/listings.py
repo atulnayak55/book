@@ -1,6 +1,4 @@
 # routers/listings.py
-import shutil
-import uuid
 from pathlib import Path
 from typing import List, Optional
 
@@ -12,6 +10,7 @@ from database import models
 from database.database import get_db
 from routers.auth import get_current_user
 from schemas import listing as listing_schemas
+from services.uploads import save_validated_image
 
 router = APIRouter(prefix="/listings", tags=["Marketplace Listings"])
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
@@ -71,16 +70,8 @@ def upload_listing_image(
     if not listing or listing.seller_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to edit this listing")
 
-    filename = file.filename or "upload"
-    file_extension = filename.split(".")[-1] if "." in filename else "bin"
-    unique_filename = f"{uuid.uuid4()}.{file_extension}"
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    file_path = UPLOAD_DIR / unique_filename
-
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    db_image = models.ListingImage(image_url=f"/uploads/{unique_filename}", listing_id=listing_id)
+    stored_filename = save_validated_image(file=file, upload_dir=UPLOAD_DIR, filename_prefix="listing_")
+    db_image = models.ListingImage(image_url=f"/uploads/{stored_filename}", listing_id=listing_id)
     db.add(db_image)
     db.commit()
     db.refresh(db_image)
